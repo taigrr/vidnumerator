@@ -57,6 +57,21 @@ func (r *cap) QueryFd(fileDesciptor int) error {
 }
 
 // this function checks the ioctl for VIDIOC_QUERYCAP to see if the device is a video capture device
+func IsVideoCapture(path string) (bool, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY, 0o755)
+	if err != nil {
+		return false, err
+	}
+	fd := f.Fd()
+	ic := cap{}
+	err = ic.QueryFd(int(fd))
+	if err != nil {
+		return false, err
+	}
+	return ic.deviceCaps == 69206017, nil
+}
+
+// this function checks the ioctl for VIDIOC_QUERYCAP to see if the device is a video capture device
 func EnumeratedVideoDevices() []string {
 	// list all files in the /dev directory
 	d, err := os.ReadDir("/dev")
@@ -74,17 +89,7 @@ func EnumeratedVideoDevices() []string {
 			continue
 		}
 		fname = filepath.Join("/dev/", fname)
-		f, err := os.OpenFile(fname, os.O_RDONLY, 0o755)
-		if err != nil {
-			continue
-		}
-		fd := f.Fd()
-		ic := cap{}
-		err = ic.QueryFd(int(fd))
-		if err != nil {
-			continue
-		}
-		if ic.deviceCaps == 69206017 {
+		if isVidCap, _ := IsVideoCapture(fname); isVidCap {
 			devNames = append(devNames, fname)
 		}
 	}
