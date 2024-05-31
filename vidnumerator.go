@@ -72,11 +72,11 @@ func IsVideoCapture(path string) (bool, error) {
 }
 
 // this function checks the ioctl for VIDIOC_QUERYCAP to see if the device is a video capture device
-func EnumeratedVideoDevices() []string {
+func EnumeratedVideoDevices() ([]string, error) {
 	// list all files in the /dev directory
 	d, err := os.ReadDir("/dev")
 	if err != nil {
-		return []string{}
+		return []string{}, err
 	}
 	// iterate over the files in the directory
 	devNames := []string{}
@@ -89,9 +89,13 @@ func EnumeratedVideoDevices() []string {
 			continue
 		}
 		fname = filepath.Join("/dev/", fname)
-		if isVidCap, _ := IsVideoCapture(fname); isVidCap {
+		isVidCap, err := IsVideoCapture(fname)
+		if err != nil {
+			return []string{}, err
+		}
+		if isVidCap {
 			devNames = append(devNames, fname)
 		}
 	}
-	return devNames
+	return devNames, nil
 }
