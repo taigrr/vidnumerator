@@ -28,6 +28,10 @@ const (
 		(uintptr('V') << IOCTypeShift) |
 		(0 << IOCNrShift) |
 		(unsafe.Sizeof(cap{}) << IOCSizeShift)
+
+	// V4L2CapVideoCapture is the device capability flag indicating
+	// the device supports video capture (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING | V4L2_CAP_DEVICE_CAPS).
+	V4L2CapVideoCapture uint32 = 69206017
 )
 
 type cap struct {
@@ -40,13 +44,13 @@ type cap struct {
 	reserved     [3]uint32
 }
 
-func (r *cap) QueryFd(fileDesciptor int) error {
+func (r *cap) QueryFd(fileDescriptor int) error {
 	if r == nil {
 		return fmt.Errorf("nil receiver")
 	}
 	_, _, errorNumber := unix.Syscall(
 		unix.SYS_IOCTL,
-		uintptr(fileDesciptor),
+		uintptr(fileDescriptor),
 		VidIOCQueryCap,
 		uintptr(unsafe.Pointer(r)),
 	)
@@ -68,7 +72,7 @@ func IsVideoCapture(path string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return ic.deviceCaps == 69206017, nil
+	return ic.deviceCaps == V4L2CapVideoCapture, nil
 }
 
 // this function checks the ioctl for VIDIOC_QUERYCAP to see if the device is a video capture device
