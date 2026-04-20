@@ -67,12 +67,66 @@ func TestEnumeratedVideoDevices(t *testing.T) {
 	}
 }
 
-func TestV4L2CapVideoCaptureConstant(t *testing.T) {
-	// Verify the constant matches the expected V4L2 capability flags.
-	// 69206017 = 0x04200001 = V4L2_CAP_VIDEO_CAPTURE (0x1) | V4L2_CAP_STREAMING (0x04000000) | V4L2_CAP_DEVICE_CAPS (0x80000000)
-	// Note: 69206017 = 0x41F8001 — let's verify the actual hex.
-	expected := uint32(69206017)
-	if V4L2CapVideoCapture != expected {
-		t.Fatalf("V4L2CapVideoCapture = %d, expected %d", V4L2CapVideoCapture, expected)
+func TestCapVideoCaptureCapsUsesDeviceCapsWhenPresent(t *testing.T) {
+	ic := cap{
+		capabilities: V4L2CapDeviceCaps,
+		deviceCaps:   V4L2CapVideoCapture | V4L2CapStreaming,
+	}
+
+	if got := ic.videoCaptureCaps(); got != ic.deviceCaps {
+		t.Fatalf("videoCaptureCaps() = %#x, want %#x", got, ic.deviceCaps)
+	}
+}
+
+func TestCapVideoCaptureCapsFallsBackToCapabilities(t *testing.T) {
+	ic := cap{
+		capabilities: V4L2CapVideoCapture | V4L2CapStreaming,
+	}
+
+	if got := ic.videoCaptureCaps(); got != ic.capabilities {
+		t.Fatalf("videoCaptureCaps() = %#x, want %#x", got, ic.capabilities)
+	}
+}
+
+func TestCapIsVideoCaptureAcceptsAdditionalFlags(t *testing.T) {
+	ic := cap{
+		capabilities: V4L2CapDeviceCaps,
+		deviceCaps: V4L2CapVideoCapture |
+			V4L2CapStreaming |
+			0x00000002,
+	}
+
+	if !ic.isVideoCapture() {
+		t.Fatal("expected device with capture and streaming flags to be detected")
+	}
+}
+
+func TestCapIsVideoCaptureRequiresCaptureAndStreaming(t *testing.T) {
+	tests := []struct {
+		name string
+		ic   cap
+	}{
+		{
+			name: "missing capture",
+			ic: cap{
+				capabilities: V4L2CapDeviceCaps,
+				deviceCaps:   V4L2CapStreaming,
+			},
+		},
+		{
+			name: "missing streaming",
+			ic: cap{
+				capabilities: V4L2CapDeviceCaps,
+				deviceCaps:   V4L2CapVideoCapture,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if test.ic.isVideoCapture() {
+				t.Fatal("expected non-capture device")
+			}
+		})
 	}
 }

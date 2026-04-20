@@ -29,9 +29,9 @@ const (
 		(0 << IOCNrShift) |
 		(unsafe.Sizeof(cap{}) << IOCSizeShift)
 
-	// V4L2CapVideoCapture is the device capability flag indicating
-	// the device supports video capture (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING | V4L2_CAP_DEVICE_CAPS).
-	V4L2CapVideoCapture uint32 = 69206017
+	V4L2CapVideoCapture uint32 = 0x00000001
+	V4L2CapStreaming    uint32 = 0x04000000
+	V4L2CapDeviceCaps   uint32 = 0x80000000
 )
 
 type cap struct {
@@ -60,22 +60,37 @@ func (r *cap) QueryFd(fileDescriptor int) error {
 	return nil
 }
 
-// this function checks the ioctl for VIDIOC_QUERYCAP to see if the device is a video capture device
-func IsVideoCapture(path string) (bool, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY, 0o755)
-	if err != nil {
-		return false, err
+func (r cap) videoCaptureCaps() uint32 {
+	if r.capabilities&V4L2CapDeviceCaps != 0 {
+		return r.deviceCaps
 	}
-	fd := f.Fd()
-	ic := cap{}
-	err = ic.QueryFd(int(fd))
-	if err != nil {
-		return false, err
-	}
-	return ic.deviceCaps == V4L2CapVideoCapture, nil
+	return r.capabilities
 }
 
-// this function checks the ioctl for VIDIOC_QUERYCAP to see if the device is a video capture device
+func (r cap) isVideoCapture() bool {
+	caps := r.videoCaptureCaps()
+	return caps&V4L2CapVideoCapture != 0 && caps&V4L2CapStreaming != 0
+}
+
+// IsVideoCapture checks the ioctl for VIDIOC_QUERYCAP to see if the device is a video capture device.
+func IsVideoCapture(path string) (bool, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY, 0)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+
+	ic := cap{}
+	err = ic.QueryFd(int(f.Fd()))
+	if err != nil {
+		return false, err
+	}
+	return ic.isVideoCapture(), nil
+}
+
+// EnumeratedVideoDevices lists all /dev/video* nodes that support video capture.
 func EnumeratedVideoDevices() ([]string, error) {
 	// list all files in the /dev directory
 	d, err := os.ReadDir("/dev")
