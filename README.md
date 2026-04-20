@@ -12,23 +12,28 @@ The list of strings returned are the full filepaths to valid devices.
 The library works by:
 
 1. Scanning `/dev` for files matching the pattern `video*`
-2. Using the `VIDIOC_QUERYCAP` ioctl to check if each device is a video capture device
-3. Filtering out non-capture devices (like metadata control handles)
+2. Calling the `VIDIOC_QUERYCAP` ioctl for each candidate
+3. Reading the effective capability bits from `deviceCaps` when `V4L2_CAP_DEVICE_CAPS` is set, otherwise falling back to `capabilities`
+4. Keeping only devices that advertise both `V4L2_CAP_VIDEO_CAPTURE` and `V4L2_CAP_STREAMING`
 
-The core functionality is implemented through direct syscalls to the Linux kernel's V4L2 (Video4Linux2) API. The library uses the `VIDIOC_QUERYCAP` ioctl command to query device capabilities and determine if a device supports video capture.
+That filtering excludes metadata-only handles and other non-capture nodes that still show up as `/dev/videoN`.
 
 ## Usage
 
 ```go
 devices, err := vidnumerator.EnumeratedVideoDevices()
 if err != nil {
-    // handle error
+    // likely permission or ioctl failure
+    log.Fatal(err)
 }
-// devices will contain paths like "/dev/video0", "/dev/video2", etc.
+
+for _, device := range devices {
+    fmt.Println(device)
+}
 ```
 
 ## Implementation Notes
 
 - Uses direct syscalls via `golang.org/x/sys/unix`
 - Implements custom ioctl constants for V4L2 device querying
-- Checks for specific device capabilities (0x4200001) to identify capture devices
+- Uses capability bit checks instead of matching one exact integer value, so drivers with additional flags still work correctly
