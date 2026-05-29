@@ -1,6 +1,7 @@
 package vidnumerator
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -90,16 +91,16 @@ func IsVideoCapture(path string) (bool, error) {
 	return ic.isVideoCapture(), nil
 }
 
-// EnumeratedVideoDevices lists all /dev/video* nodes that support video capture.
-func EnumeratedVideoDevices() ([]string, error) {
-	// list all files in the /dev directory
-	d, err := os.ReadDir("/dev")
-	if err != nil {
-		return []string{}, err
-	}
-	// iterate over the files in the directory
+func shouldSkipDeviceError(err error) bool {
+	return errors.Is(err, unix.ENOTTY) ||
+		errors.Is(err, unix.EINVAL) ||
+		errors.Is(err, unix.ENODEV) ||
+		errors.Is(err, unix.ENOENT)
+}
+
+func enumeratedVideoDevicesFromEntries(dirPath string, entries []os.DirEntry, isVideoCapture func(string) (bool, error)) ([]string, error) {
 	devNames := []string{}
-	for _, file := range d {
+	for _, file := range entries {
 		if file.IsDir() {
 			continue
 		}
@@ -107,9 +108,12 @@ func EnumeratedVideoDevices() ([]string, error) {
 		if !strings.HasPrefix(fname, "video") {
 			continue
 		}
-		fname = filepath.Join("/dev/", fname)
-		isVidCap, err := IsVideoCapture(fname)
+		fname = filepath.Join(dirPath, fname)
+		isVidCap, err := isVideoCapture(fname)
 		if err != nil {
+			if shouldSkipDeviceError(err) {
+				continue
+			}
 			return []string{}, err
 		}
 		if isVidCap {
@@ -117,4 +121,14 @@ func EnumeratedVideoDevices() ([]string, error) {
 		}
 	}
 	return devNames, nil
+}
+
+// EnumeratedVideoDevices lists all /dev/video* nodes that support video capture.
+func EnumeratedVideoDevices() ([]string, error) {
+	entries, err := os.ReadDir("/dev")
+	if err != nil {
+		return []string{}, err
+	}
+
+	return enumeratedVideoDevicesFromEntries("/dev", entries, IsVideoCapture)
 }

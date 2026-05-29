@@ -1,8 +1,12 @@
 package vidnumerator
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestCapQueryFdNilReceiver(t *testing.T) {
@@ -130,3 +134,77 @@ func TestCapIsVideoCaptureRequiresCaptureAndStreaming(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldSkipDeviceError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "enotty", err: unix.ENOTTY, want: true},
+		{name: "einval", err: unix.EINVAL, want: true},
+		{name: "enodev", err: unix.ENODEV, want: true},
+		{name: "enoent", err: unix.ENOENT, want: true},
+		{name: "wrapped enotty", err: fmt.Errorf("wrapped: %w", unix.ENOTTY), want: true},
+		{name: "permission", err: os.ErrPermission, want: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := shouldSkipDeviceError(test.err); got != test.want {
+				t.Fatalf("shouldSkipDeviceError(%v) = %v, want %v", test.err, got, test.want)
+			}
+		})
+	}
+}
+
+func TestEnumeratedVideoDevicesFromEntriesSkipsExpectedDeviceErrors(t *testing.T) {
+	entries := []os.DirEntry{
+		fakeDirEntry{name: "video0"},
+		fakeDirEntry{name: "video1"},
+		fakeDirEntry{name: "video2"},
+		fakeDirEntry{name: "not-video"},
+		fakeDirEntry{name: "video-dir", dir: true},
+	}
+
+	devices, err := enumeratedVideoDevicesFromEntries("/dev", entries, func(path string) (bool, error) {
+		switch path {
+		case "/dev/video0":
+			return true, nil
+		case "/dev/video1":
+			return false, unix.ENOTTY
+		case "/dev/video2":
+			return false, nil
+		default:
+			return false, errors.New("unexpected path")
+		}
+	})
+	if err != nil {
+		t.Fatalf("enumeratedVideoDevicesFromEntries() error = %v", err)
+	}
+	if len(devices) != 1 || devices[0] != "/dev/video0" {
+		t.Fatalf("enumeratedVideoDevicesFromEntries() = %v, want [/dev/video0]", devices)
+	}
+}
+
+func TestEnumeratedVideoDevicesFromEntriesReturnsUnexpectedErrors(t *testing.T) {
+	entries := []os.DirEntry{fakeDirEntry{name: "video0"}}
+	expectedErr := errors.New("boom")
+
+	_, err := enumeratedVideoDevicesFromEntries("/dev", entries, func(path string) (bool, error) {
+		return false, expectedErr
+	})
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("enumeratedVideoDevicesFromEntries() error = %v, want %v", err, expectedErr)
+	}
+}
+
+type fakeDirEntry struct {
+	name string
+	dir  bool
+}
+
+func (entry fakeDirEntry) Name() string               { return entry.name }
+func (entry fakeDirEntry) IsDir() bool                { return entry.dir }
+func (entry fakeDirEntry) Type() os.FileMode          { return 0 }
+func (entry fakeDirEntry) Info() (os.FileInfo, error) { return nil, nil }
