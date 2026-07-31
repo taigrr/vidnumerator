@@ -30,9 +30,10 @@ const (
 		(0 << IOCNrShift) |
 		(unsafe.Sizeof(cap{}) << IOCSizeShift)
 
-	V4L2CapVideoCapture uint32 = 0x00000001
-	V4L2CapStreaming    uint32 = 0x04000000
-	V4L2CapDeviceCaps   uint32 = 0x80000000
+	V4L2CapVideoCapture       uint32 = 0x00000001
+	V4L2CapVideoCaptureMPlane uint32 = 0x00001000
+	V4L2CapStreaming          uint32 = 0x04000000
+	V4L2CapDeviceCaps         uint32 = 0x80000000
 )
 
 type cap struct {
@@ -70,7 +71,8 @@ func (r cap) videoCaptureCaps() uint32 {
 
 func (r cap) isVideoCapture() bool {
 	caps := r.videoCaptureCaps()
-	return caps&V4L2CapVideoCapture != 0 && caps&V4L2CapStreaming != 0
+	isCapture := caps&(V4L2CapVideoCapture|V4L2CapVideoCaptureMPlane) != 0
+	return isCapture && caps&V4L2CapStreaming != 0
 }
 
 // IsVideoCapture checks the ioctl for VIDIOC_QUERYCAP to see if the device is a video capture device.
