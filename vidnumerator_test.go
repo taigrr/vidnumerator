@@ -92,44 +92,48 @@ func TestCapVideoCaptureCapsFallsBackToCapabilities(t *testing.T) {
 	}
 }
 
-func TestCapIsVideoCaptureAcceptsAdditionalFlags(t *testing.T) {
-	ic := cap{
-		capabilities: V4L2CapDeviceCaps,
-		deviceCaps: V4L2CapVideoCapture |
-			V4L2CapStreaming |
-			0x00000002,
-	}
-
-	if !ic.isVideoCapture() {
-		t.Fatal("expected device with capture and streaming flags to be detected")
-	}
-}
-
-func TestCapIsVideoCaptureRequiresCaptureAndStreaming(t *testing.T) {
+func TestCapIsVideoCapture(t *testing.T) {
 	tests := []struct {
 		name string
-		ic   cap
+		caps uint32
+		want bool
 	}{
 		{
-			name: "missing capture",
-			ic: cap{
-				capabilities: V4L2CapDeviceCaps,
-				deviceCaps:   V4L2CapStreaming,
-			},
+			name: "single-planar capture with streaming",
+			caps: V4L2CapVideoCapture | V4L2CapStreaming,
+			want: true,
+		},
+		{
+			name: "multi-planar capture with streaming",
+			caps: V4L2CapVideoCaptureMPlane | V4L2CapStreaming,
+			want: true,
+		},
+		{
+			name: "capture with additional flags",
+			caps: V4L2CapVideoCapture | V4L2CapStreaming | 0x00000002,
+			want: true,
 		},
 		{
 			name: "missing streaming",
-			ic: cap{
-				capabilities: V4L2CapDeviceCaps,
-				deviceCaps:   V4L2CapVideoCapture,
-			},
+			caps: V4L2CapVideoCapture,
+			want: false,
+		},
+		{
+			name: "missing capture",
+			caps: V4L2CapStreaming,
+			want: false,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if test.ic.isVideoCapture() {
-				t.Fatal("expected non-capture device")
+			ic := cap{
+				capabilities: V4L2CapDeviceCaps,
+				deviceCaps:   test.caps,
+			}
+
+			if got := ic.isVideoCapture(); got != test.want {
+				t.Fatalf("isVideoCapture() = %v, want %v", got, test.want)
 			}
 		})
 	}
