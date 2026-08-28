@@ -1,19 +1,41 @@
 name: Test
+
 on:
   push:
-    branches: [master]
+    branches:
+      - master
   pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
 jobs:
   test:
+    name: Go
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go test -race ./...
-      - run: go vet ./...
-      - run: go build ./...
+          cache: true
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
       - name: Install staticcheck
         run: go install honnef.co/go/tools/cmd/staticcheck@latest
-      - run: staticcheck ./...
+
+      - name: Staticcheck
+        run: staticcheck ./...
