@@ -7,6 +7,8 @@ The list of strings returned are the full filepaths to valid devices.
 >[!IMPORTANT]
 >In order for this library to work properly, the executing user must have either root or video group privileges
 
+VidNumerator's device probing is Linux-only because it depends on V4L2. Other platforms build successfully and return `ErrUnsupportedPlatform`.
+
 ## Technical Details
 
 The library works by:
