@@ -214,3 +214,76 @@ func (entry fakeDirEntry) Name() string               { return entry.name }
 func (entry fakeDirEntry) IsDir() bool                { return entry.dir }
 func (entry fakeDirEntry) Type() os.FileMode          { return 0 }
 func (entry fakeDirEntry) Info() (os.FileInfo, error) { return nil, nil }
+
+func TestCapIsVideoCaptureEffectiveCapabilities(t *testing.T) {
+	capture := V4L2CapVideoCapture | V4L2CapStreaming
+	tests := []struct {
+		name         string
+		capabilities uint32
+		deviceCaps   uint32
+		want         bool
+	}{
+		{"device caps override global capture", V4L2CapDeviceCaps | capture, V4L2CapStreaming, false},
+		{"device caps supply capture", V4L2CapDeviceCaps, capture, true},
+		{"empty device caps override global capture", V4L2CapDeviceCaps | capture, 0, false},
+		{"ignore device caps without flag", V4L2CapStreaming, capture, false},
+		{"global capture without flag", capture, V4L2CapStreaming, true},
+		{"global multi-planar capture", V4L2CapVideoCaptureMPlane | V4L2CapStreaming, 0, true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			capability := cap{capabilities: test.capabilities, deviceCaps: test.deviceCaps}
+			if got := capability.isVideoCapture(); got != test.want {
+				t.Fatalf("isVideoCapture() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestEnumeratedVideoDevicesFromEntriesContinuesAfterDeviceErrors(t *testing.T) {
+	for _, deviceErr := range []error{unix.ENOTTY, unix.EINVAL, unix.ENODEV, unix.ENOENT} {
+		t.Run(deviceErr.Error(), func(t *testing.T) {
+			entries := []os.DirEntry{fakeDirEntry{name: "video0"}, fakeDirEntry{name: "video1"}}
+			var probed []string
+			devices, err := enumeratedVideoDevicesFromEntries(t.TempDir(), entries, func(path string) (bool, error) {
+				probed = append(probed, path)
+				if len(probed) == 1 {
+					return false, fmt.Errorf("query capability: %w", deviceErr)
+				}
+				return true, nil
+			})
+			if err != nil {
+				t.Fatalf("enumeration failed: %v", err)
+			}
+			if len(probed) != 2 || len(devices) != 1 || devices[0] != probed[1] {
+				t.Fatalf("probed %v, returned %v; want second device after skipped error", probed, devices)
+			}
+		})
+	}
+}
+
+func TestEnumeratedVideoDevicesFromEntriesStopsOnUnexpectedError(t *testing.T) {
+	entries := []os.DirEntry{
+		fakeDirEntry{name: "video0"},
+		fakeDirEntry{name: "video1"},
+		fakeDirEntry{name: "video2"},
+	}
+	expectedErr := fmt.Errorf("open video device: %w", os.ErrPermission)
+	probes := 0
+	devices, err := enumeratedVideoDevicesFromEntries("/dev", entries, func(string) (bool, error) {
+		probes++
+		if probes == 2 {
+			return false, expectedErr
+		}
+		return true, nil
+	})
+	if !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("error = %v, want wrapped permission error", err)
+	}
+	if probes != 2 {
+		t.Fatalf("probed %d devices, want stop after second device", probes)
+	}
+	if len(devices) != 0 {
+		t.Fatalf("returned partial results %v with error", devices)
+	}
+}
