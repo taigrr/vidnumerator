@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -285,5 +287,36 @@ func TestEnumeratedVideoDevicesFromEntriesStopsOnUnexpectedError(t *testing.T) {
 	}
 	if len(devices) != 0 {
 		t.Fatalf("returned partial results %v with error", devices)
+	}
+}
+
+func TestIsVideoCaptureDoesNotBlockOnFIFO(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "video0")
+	if err := unix.Mkfifo(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		capture, err := IsVideoCapture(path)
+		if capture {
+			result <- errors.New("FIFO reported as video capture")
+			return
+		}
+		result <- err
+	}()
+	select {
+	case err := <-result:
+		if !errors.Is(err, unix.ENOTTY) {
+			t.Fatalf("FIFO probe error = %v, want ENOTTY", err)
+		}
+	case <-time.After(2 * time.Second):
+		// Unblock the reader so a regression does not leak a goroutine.
+		fd, err := unix.Open(path, unix.O_RDWR|unix.O_NONBLOCK, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer unix.Close(fd)
+		<-result
+		t.Fatal("device probe blocked waiting for a FIFO writer")
 	}
 }

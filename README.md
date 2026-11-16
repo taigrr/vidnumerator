@@ -36,6 +36,7 @@ for _, device := range devices {
 
 ## Implementation Notes
 
+- Opens candidate paths in nonblocking mode so probing does not wait for device data or FIFO writers
 - Uses direct syscalls via `golang.org/x/sys/unix`
 - Implements custom ioctl constants for V4L2 device querying
 - Uses capability bit checks instead of matching one exact integer value, so drivers with additional flags still work correctly
