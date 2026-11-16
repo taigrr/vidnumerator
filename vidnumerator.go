@@ -78,8 +78,9 @@ func (r cap) isVideoCapture() bool {
 }
 
 // IsVideoCapture checks the ioctl for VIDIOC_QUERYCAP to see if the device is a video capture device.
+// The path is opened in nonblocking mode so probing does not wait for device data or a FIFO writer.
 func IsVideoCapture(path string) (bool, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY, 0)
+	f, err := os.OpenFile(path, os.O_RDONLY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return false, err
 	}
